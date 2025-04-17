@@ -1,6 +1,6 @@
 # Script without seed
 cd oss-fuzz
-git checkout no_seed
+git checkout no-seed
 rm -rf build/out/libjpeg-turbo/*
 python3 infra/helper.py build_fuzzers libjpeg-turbo
 mkdir -p build/out/corpus_no_seed/
