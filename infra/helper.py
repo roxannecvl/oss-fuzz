@@ -1443,7 +1443,7 @@ def run_fuzzer(args):
       '-t',
       BASE_RUNNER_IMAGE,
       'timeout',
-      '10s',
+      '4h',
       'run_fuzzer',
       args.fuzzer_name,
   ] + args.fuzzer_args)
