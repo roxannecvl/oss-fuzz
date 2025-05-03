@@ -34,3 +34,4 @@ RUN cat fuzz/branches.txt | while read branch; do \
 RUN rm -rf seed-corpora
 
 COPY build.sh $SRC/
+COPY build_local.sh $SRC/libjpeg-turbo.main/fuzz/build.sh
