@@ -1421,6 +1421,10 @@ def run_fuzzer(args):
       'HELPER=True',
   ]
 
+  if args.command == 'run_fuzzer':
+    env.append('FUZZER_ARGS=-fork=1 -ignore_crashes=1 -ignore_ooms=1 -ignore_timeouts=1')
+
+
   if args.e:
     env += args.e
 
@@ -1443,7 +1447,7 @@ def run_fuzzer(args):
       '-t',
       BASE_RUNNER_IMAGE,
       'timeout',
-      '10s',
+      '14400s',
       'run_fuzzer',
       args.fuzzer_name,
   ] + args.fuzzer_args)

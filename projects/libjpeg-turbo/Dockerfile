@@ -23,6 +23,12 @@ RUN git clone --depth 1 https://github.com/libjpeg-turbo/fuzz && \
     done
 
 RUN git clone --depth 1 https://github.com/libjpeg-turbo/seed-corpora
+
+#Remove next line to not have your own seeds 
+#COPY /seed /seed-corpora/afl-testcases/jpeg_turbo/full/images
+####
+
+
 RUN cd seed-corpora && zip -r ../decompress_fuzzer_seed_corpus.zip afl-testcases/jpeg* bugs/decompress*
 RUN cat fuzz/branches.txt | while read branch; do \
       zip -r decompress_fuzzer_seed_corpus.zip libjpeg-turbo.$branch/testimages/*.jpg; \
@@ -34,4 +40,6 @@ RUN cat fuzz/branches.txt | while read branch; do \
 RUN rm -rf seed-corpora
 
 COPY build.sh $SRC/
+
+# Line to change the harness
 COPY /fuzz /src/libjpeg-turbo.main/fuzz/
