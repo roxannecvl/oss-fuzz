@@ -1,6 +1,6 @@
 # Script with seed
 cd oss-fuzz
-git checkout main
+git checkout transform_improvement
 rm -rf build/out/libjpeg-turbo/*
 python3 infra/helper.py build_fuzzers libjpeg-turbo
 mkdir -p build/out/corpus_seed/
