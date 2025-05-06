@@ -38,6 +38,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
   // Initialize TurboJPEG
   // if ((handle = tj3Init(TJINIT_DECOMPRESS)) == NULL)
   //   goto bailout;
+  handle = tj3Init(TJINIT_DECOMPRESS);
   
   // Use first 4 bytes for width (limit to reasonable values)
   width = (data[0] | (data[1] << 8)) % 1024;
@@ -73,7 +74,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
   if ((imgBuf = (unsigned char *)malloc(bufSize)) == NULL)
     goto bailout;
   
-  // Fill buffer with pattern derived from fuzzer data
+  // Fill buffer with pattern derived from fuzzer data 
+  // NOTE this is weird, the fuzzer should just give the full image I think
+  // But it should work for starters
   unsigned char pattern[16];
   memcpy(pattern, data + 8, size >= 24 ? 16 : (size - 8));
   
