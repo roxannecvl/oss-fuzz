@@ -1,111 +1,92 @@
-#include <turbojpeg.h>
+/*
+ * Fuzzer harness for tj3SaveImage8 function in libjpeg-turbo
+ */
+
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
 #include <string.h>
+#include <turbojpeg.h>
 #include <unistd.h>
 
-#define NUMTESTS 7
+// Constants to limit input sizes
+#define MAX_WIDTH 1024
+#define MAX_HEIGHT 1024
+#define MIN_DIM 1
 
-// Pixel formats to test with
-struct test {
-  enum TJPF pf;
-  const char* extension;  // File extension to use
+// Supported pixel formats to test
+#define NUMPF 3
+static const enum TJPF pixelFormats[NUMPF] = {
+    TJPF_RGB,  // Most common format
+    TJPF_GRAY, // Grayscale
+    TJPF_CMYK  // CMYK format
 };
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
-  if (size < 16) return 0;  // Need at least some data to work with
+  // Need at least 12 bytes for 3 int32 values (width, height, pixelFormat)
+  if (size < 12)
+    return 0;
 
   tjhandle handle = NULL;
   unsigned char *imgBuf = NULL;
-  int width = 0, height = 0;
-  char filename[FILENAME_MAX] = { 0 };
+  char filename[] = "/tmp/fuzz_output_XXXXXX.jpg";
   int fd = -1;
   int retval = 0;
+  int width, height, pitch;
+  int pf;
 
-  // Different pixel formats and file extensions to test
-  struct test tests[NUMTESTS] = {
-    { TJPF_RGB, ".ppm" },
-    { TJPF_BGR, ".bmp" },
-    { TJPF_RGBX, ".ppm" },
-    { TJPF_BGRA, ".bmp" },
-    { TJPF_XRGB, ".ppm" },
-    { TJPF_GRAY, ".pgm" },
-    { TJPF_CMYK, ".ppm" }
-  };
+  // Reading width and height from data
+  memcpy(&width, data, sizeof(int));
+  memcpy(&height, data + sizeof(int), sizeof(int));
 
-  // Initialize TurboJPEG
-  // if ((handle = tj3Init(TJINIT_DECOMPRESS)) == NULL)
-  //   goto bailout;
-  handle = tj3Init(TJINIT_DECOMPRESS);
+  // Constrain dimensions
+  width = abs(width) % (MAX_WIDTH - MIN_DIM + 1) + MIN_DIM;
+  height = abs(height) % (MAX_HEIGHT - MIN_DIM + 1) + MIN_DIM;
 
-  // Use first 4 bytes for width (limit to reasonable values)
-  width = (data[0] | (data[1] << 8)) % 1024;
-  if (width < 1) width = 1;
+  // Pixel format selection based on next byte
+  pf = pixelFormats[data[2 * sizeof(int)] % NUMPF];
 
-  // Use next 4 bytes for height (limit to reasonable values)
-  height = (data[2] | (data[3] << 8)) % 1024;
-  if (height < 1) height = 1;
+  // Allocate image buffer
+  pitch = width * tjPixelSize[pf];
+  size_t imgSize = pitch * height;
+  imgBuf = (unsigned char *)malloc(imgSize);
 
-  // Use the next byte to determine which test to run
-  int testIdx = data[4] % NUMTESTS;
-  enum TJPF pixelFormat = tests[testIdx].pf;
+  // Fill buffer with fuzz data or zeros if not enough data
+  size_t copySize = size - 2 * sizeof(int) - 1;
+  if (copySize > imgSize)
+    copySize = imgSize;
+  if (copySize > 0) {
+    memcpy(imgBuf, data + 2 * sizeof(int) + 1, copySize);
+  }
+  if (copySize < imgSize) {
+    memset(imgBuf + copySize, 0, imgSize - copySize);
+  }
 
-  // Calculate pitch (0 means tightly packed)
-  int pitch = 1;  // Use 0 half the time
-  // if (data[5] & 1) {
-  //   pitch = width * tjPixelSize[pixelFormat];
-  //   // Sometimes add padding
-  //   if (data[5] & 2)
-  //     pitch += (data[5] & 0x0F);
-  // }
+  // Checking that the malloc worked
+  if (!imgBuf) {
+    goto bailout;
+  }
 
-  // Set some TurboJPEG parameters based on fuzzer data
-  tj3Set(handle, TJPARAM_BOTTOMUP, (data[6] & 1));
-  tj3Set(handle, TJPARAM_MAXMEMORY, ((data[7] & 0x0F) + 1) * 10);  // 10-160MB
-
-  // Create a temporary file for output
-  snprintf(filename, FILENAME_MAX, "/tmp/libjpeg-turbo_saveimage_fuzz%s",
-           tests[testIdx].extension);
-
-  // Create and fill an in-memory image buffer with pattern from fuzzer data
-  size_t bufSize = width * height * tjPixelSize[pixelFormat];
-  if ((imgBuf = (unsigned char *)malloc(bufSize)) == NULL)
+  // Making filename unique
+  if ((fd = mkstemp(filename)) < 0)
     goto bailout;
 
-  // Fill buffer with pattern derived from fuzzer data
-  // NOTE this is weird, the fuzzer should just give the full image I think
-  // But it should work for starters
-  unsigned char pattern[16];
-  memcpy(pattern, data + 8, size >= 24 ? 16 : (size - 8));
+  // Create a TurboJPEG decompression instance
+  if ((handle = tj3Init(TJINIT_DECOMPRESS)) == NULL)
+    goto bailout;
 
-  for (size_t i = 0; i < bufSize; i++) {
-    imgBuf[i] = pattern[i % 16];
-  }
-
-  // Call tj3SaveImage8 with the fuzzer-created image
-  if (tj3SaveImage8(handle, filename, imgBuf, width, pitch, height, pixelFormat) < 0) {
-    // Errors are expected part of fuzzing - don't report them
-  }
-
-  // Test reading the file back
-  if (access(filename, F_OK) == 0) {
-    // File exists, try to read it
-    FILE *file = fopen(filename, "rb");
-    if (file) {
-      char buffer[4];
-      if (fread(buffer, 1, sizeof(buffer), file) > 0) {
-        // Successfully read some data
-      }
-      fclose(file);
-    }
-  }
+  // Call the function
+  retval = tj3SaveImage8(handle, filename, imgBuf, width, pitch, height, pf);
 
 bailout:
   // Clean up resources
-  free(imgBuf);
-  tj3Destroy(handle);
-  if (strlen(filename) > 0) unlink(filename);  // Remove temp file
+  if (imgBuf)
+    free(imgBuf);
+  if (handle)
+    tj3Destroy(handle);
+
+  // Remove the output file to avoid filling up the disk
+  remove(filename);
 
   return 0;
 }
