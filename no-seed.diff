@@ -1,0 +1,48 @@
+diff --git a/projects/libjpeg-turbo/Dockerfile b/projects/libjpeg-turbo/Dockerfile
+index 7ddd36554..8e8f0b98d 100644
+--- a/projects/libjpeg-turbo/Dockerfile
++++ b/projects/libjpeg-turbo/Dockerfile
+@@ -34,3 +34,4 @@ RUN cat fuzz/branches.txt | while read branch; do \
+ RUN rm -rf seed-corpora
+ 
+ COPY build.sh $SRC/
++COPY build_local.sh $SRC/libjpeg-turbo.main/fuzz/build.sh
+diff --git a/projects/libjpeg-turbo/build_local.sh b/projects/libjpeg-turbo/build_local.sh
+new file mode 100644
+index 000000000..ebac6ceec
+--- /dev/null
++++ b/projects/libjpeg-turbo/build_local.sh
+@@ -0,0 +1,33 @@
++#!/bin/bash
++
++set -u
++set -e
++
++FUZZER_SUFFIX=
++if [ $# -ge 1 ]; then
++        FUZZER_SUFFIX="$1"
++        FUZZER_SUFFIX="`echo $1 | sed 's/\./_/g'`"
++fi
++
++if [ "$SANITIZER" = "memory" ]; then
++        export CFLAGS="$CFLAGS -DZERO_BUFFERS=1"
++fi
++
++cmake . -DCMAKE_BUILD_TYPE=RelWithDebInfo -DENABLE_STATIC=1 -DENABLE_SHARED=0 \
++        -DCMAKE_C_FLAGS_RELWITHDEBINFO="-g -DNDEBUG" \
++        -DCMAKE_CXX_FLAGS_RELWITHDEBINFO="-g -DNDEBUG" -DCMAKE_INSTALL_PREFIX=$WORK \
++        -DWITH_FUZZ=1 -DFUZZ_BINDIR=$OUT -DFUZZ_LIBRARY=$LIB_FUZZING_ENGINE \
++        -DFUZZER_SUFFIX="$FUZZER_SUFFIX"
++make "-j$(nproc)" "--load-average=$(nproc)"
++make install
++
++#cp $SRC/compress_fuzzer_seed_corpus.zip $OUT/cjpeg_fuzzer${FUZZER_SUFFIX}_seed_corpus.zip
++#cp $SRC/compress_fuzzer_seed_corpus.zip $OUT/compress_fuzzer${FUZZER_SUFFIX}_seed_corpus.zip
++#cp $SRC/compress_fuzzer_seed_corpus.zip $OUT/compress_yuv_fuzzer${FUZZER_SUFFIX}_seed_corpus.zip
++#cp $SRC/compress_fuzzer_seed_corpus.zip $OUT/compress_lossless_fuzzer${FUZZER_SUFFIX}_seed_corpus.zip
++#cp $SRC/compress_fuzzer_seed_corpus.zip $OUT/compress12_fuzzer${FUZZER_SUFFIX}_seed_corpus.zip
++#cp $SRC/compress_fuzzer_seed_corpus.zip $OUT/compress12_lossless_fuzzer${FUZZER_SUFFIX}_seed_corpus.zip
++#cp $SRC/compress_fuzzer_seed_corpus.zip $OUT/compress16_lossless_fuzzer${FUZZER_SUFFIX}_seed_corpus.zip
++#cp $SRC/decompress_fuzzer_seed_corpus.zip $OUT/libjpeg_turbo_fuzzer${FUZZER_SUFFIX}_seed_corpus.zip
++#cp $SRC/decompress_fuzzer_seed_corpus.zip $OUT/decompress_yuv_fuzzer${FUZZER_SUFFIX}_seed_corpus.zip
++#cp $SRC/decompress_fuzzer_seed_corpus.zip $OUT/transform_fuzzer${FUZZER_SUFFIX}_seed_corpus.zip
