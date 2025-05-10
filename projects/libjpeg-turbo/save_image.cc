@@ -10,8 +10,8 @@
 #include <unistd.h>
 
 // Constants to limit input sizes
-#define MAX_WIDTH 1024
-#define MAX_HEIGHT 1024
+#define MAX_WIDTH 1920
+#define MAX_HEIGHT 1080
 #define MIN_DIM 1
 
 // Supported pixel formats to test
@@ -29,7 +29,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 
   tjhandle handle = NULL;
   unsigned char *imgBuf = NULL;
-  char filename[] = "/tmp/fuzz_output_XXXXXX.jpg";
+  char filename[] = "/tmp/fuzz_output_XXXXXX";
   int fd = -1;
   int retval = 0;
   int width, height, pitch;
@@ -39,9 +39,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
   memcpy(&width, data, sizeof(int));
   memcpy(&height, data + sizeof(int), sizeof(int));
 
-  // Constrain dimensions
-  width = abs(width) % (MAX_WIDTH - MIN_DIM + 1) + MIN_DIM;
-  height = abs(height) % (MAX_HEIGHT - MIN_DIM + 1) + MIN_DIM;
+  width = (int)(((uint32_t)width) % (MAX_WIDTH - MIN_DIM + 1)) + MIN_DIM;
+  height = (int)(((uint32_t)height) % (MAX_HEIGHT - MIN_DIM + 1)) + MIN_DIM;
 
   // Pixel format selection based on next byte
   pf = pixelFormats[data[2 * sizeof(int)] % NUMPF];
@@ -70,6 +69,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
   // Making filename unique
   if ((fd = mkstemp(filename)) < 0)
     goto bailout;
+
+close(fd); // Closing the file descriptor so we don't keep many files open for nothing
+unlink(filename);
 
   // Create a TurboJPEG decompression instance
   if ((handle = tj3Init(TJINIT_DECOMPRESS)) == NULL)

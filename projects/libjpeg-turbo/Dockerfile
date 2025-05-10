@@ -37,3 +37,5 @@ COPY build.sh $SRC/
 COPY build_local.sh $SRC/libjpeg-turbo.main/fuzz/build.sh
 COPY CMakeLists.txt $SRC/libjpeg-turbo.main/fuzz/CMakeLists.txt
 COPY save_image.cc  $SRC/libjpeg-turbo.main/fuzz/save_image.cc
+
+COPY seed_generation/save_image_corpus.zip $SRC/save_image_corpus.zip
