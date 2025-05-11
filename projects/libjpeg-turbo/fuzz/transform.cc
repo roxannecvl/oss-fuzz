@@ -154,7 +154,7 @@
        goto bailout;
    }
 
-   /*                 New from here           (this one alone doesn't crash)      */ 
+   /*                 New from here                */ 
    free(dstBufs[0]);
    dstBufs[0] = NULL;
  
@@ -177,7 +177,7 @@
    }
 
 
-   /* --------------------- CRASHES ON ITS OWN (without the added line) -------------- */
+   /* ----------------------------------- */
    free(dstBufs[0]);
    dstBufs[0] = NULL;
  
@@ -204,7 +204,7 @@
    }
 
 
-   /* ----------------- doesn't crash on its own -------------------- */
+   /* ------------------------------------- */
    free(dstBufs[0]); 
    dstBufs[0] = NULL; 
  
@@ -229,7 +229,7 @@
        goto bailout;
    }
 
-    /* ----------------- doesn't crash on its own -------------------- */
+    /* ------------------------------------- */
    free(dstBufs[0]);
    dstBufs[0] = NULL;
  
@@ -253,7 +253,7 @@
        goto bailout;
    }
 
-   /* --------------- crashes on its own (without the added line) ---------------------- */
+   /* ------------------------------------- */
    free(dstBufs[0]);
    dstBufs[0] = NULL;
  
@@ -278,7 +278,7 @@
        goto bailout;
    }
 
-   /* --------------- doesn't seem to crash on its own ---------------------- */
+   /* ------------------------------------- */
    free(dstBufs[0]);
    dstBufs[0] = NULL;
  
@@ -302,7 +302,7 @@
        goto bailout;
    }
 
-   /* ----------------- crashes on its own (without the added line) ------------------ */
+   /* ----------------------------------- */
    free(dstBufs[0]);
    dstBufs[0] = NULL;
  
