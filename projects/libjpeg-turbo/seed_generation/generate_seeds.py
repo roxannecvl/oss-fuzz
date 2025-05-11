@@ -1,7 +1,7 @@
 import os
 import subprocess
 
-INPUT_DIR = "input_jpegs"
+INPUT_DIR = "jpeg"
 OUTPUT_DIR = "out"
 GENERATOR_BIN = "./generate_seed"  # Update if your binary has a different name
 
