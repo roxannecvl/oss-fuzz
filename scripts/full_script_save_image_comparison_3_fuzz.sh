@@ -16,7 +16,7 @@ for i in {1..3}; do
     fi
 
     mkdir -p "$corpus_dir"
-    echo "Running fuzz iteration $i for 10s..."
+    echo "Running fuzz iteration $i for 4h..."
     python3 infra/helper.py run_fuzzer libjpeg-turbo libjpeg_turbo_fuzzer \
         --corpus-dir "$corpus_dir"
 done
