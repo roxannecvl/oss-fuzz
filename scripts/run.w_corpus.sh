@@ -1,3 +1,5 @@
+#!/ bin / bash
+git clone git@github.com:roxannecvl/oss-fuzz.git && cd oss-fuzz
 # Suposed to be ran from the oss-fuzz root directory
 python3 infra/helper.py build_image libjpeg-turbo
 git checkout main
