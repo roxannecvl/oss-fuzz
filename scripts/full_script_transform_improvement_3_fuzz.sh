@@ -9,7 +9,7 @@ rm -rf build/out/libjpeg-turbo/*
 # Build fuzzers
 python3 infra/helper.py build_fuzzers libjpeg-turbo
 
-# Run fuzzer 3 times for 10s
+# Run fuzzer 3 times for 4h
 for i in 1 2 3
 do
     corpus_dir="build/out/corpus_seed$i"
@@ -21,7 +21,7 @@ do
     fi
 
     mkdir -p "$corpus_dir"
-    echo "Running fuzz iteration $i for 10s..."
+    echo "Running fuzz iteration $i for 4h..."
     python3 infra/helper.py run_fuzzer libjpeg-turbo transform_fuzzer \
         --corpus-dir "$corpus_dir"
 done
