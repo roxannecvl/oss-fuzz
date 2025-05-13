@@ -1,4 +1,4 @@
-git checkout main
+git checkout tj3SaveImage
 python3 infra/helper.py build_image libjpeg-turbo
 # Clean previous builds
 rm -rf build/out/libjpeg-turbo/*
@@ -9,7 +9,7 @@ python3 infra/helper.py build_fuzzers libjpeg-turbo
 # Run fuzzer 3 times for 4h
 for i in {1..3}; do
     corpus_dir="build/out/corpus_seed$i"
-
+    
     # Clear corpus dir if it exists
     if [ -d "$corpus_dir" ]; then
         echo "Clearing existing contents of $corpus_dir"
@@ -18,7 +18,7 @@ for i in {1..3}; do
 
     mkdir -p "$corpus_dir"
     echo "Running fuzz iteration $i for 4h..."
-    python3 infra/helper.py run_fuzzer libjpeg-turbo libjpeg_turbo_fuzzer \
+    python3 infra/helper.py run_fuzzer libjpeg-turbo save_image_fuzzer \
         --corpus-dir "$corpus_dir"
 done
 
@@ -38,5 +38,4 @@ python3 infra/helper.py build_fuzzers --sanitizer coverage libjpeg-turbo
 echo "Running coverage analysis..."
 python3 infra/helper.py coverage libjpeg-turbo \
     --corpus-dir "$merged_corpus" \
-    --fuzz-target libjpeg_turbo_fuzzer
-
+    --fuzz-target save_image_fuzzer
