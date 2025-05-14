@@ -1,0 +1,370 @@
+\documentclass[12pt]{article}
+\usepackage[newtxtext,newtxmath]{}
+\usepackage[
+  left=1in,
+  right=1in,
+  top=1in,
+  bottom=1in
+]{geometry}
+
+\usepackage{titlesec}
+\usepackage{xurl}
+%\usepackage[hidelinks]{hyperref}
+\usepackage[htt]{hyphenat}
+
+%\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+
+\setlength{\fboxsep}{2pt}       % padding inside \colorbox
+\newcommand{\badgecolorbox}[2]{%
+  \colorbox{#1}{\textcolor{white}{\bfseries #2}}%
+}
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2
+}
+\lstset{style=mystyle}
+
+
+% — tcolorbox for inline code boxes —
+%\usepackage{tcolorbox}
+
+%\newtcbox{\urlbox}{urlbox}
+
+\begin{document}
+\title{\bfseries CS412 Fuzzing Lab Report}
+\author{Roxanne Chevalley, Aya Hamane, Paul Tissot, Yoan Giovannini}
+\date{April 2025}
+\maketitle
+
+\begin{abstract}
+In this report, we explain in detail how we improved the fuzzing results of the project \textbf{libjpeg-turbo}, which is integrated with oss-fuzz, Google’s open source fuzzing infrastructure.
+\end{abstract}
+
+\section{Introduction}
+
+\noindent\textbf{Students:}
+\begin{itemize}
+  \item Roxanne Chevalley, 339716
+  \item Aya Hamane, 345565
+  \item Paul Tissot, 341190
+  \item Yoan Giovannini, 303934
+\end{itemize}
+
+\noindent For this fuzzing lab, we chose the \textbf{libjpeg-turbo} project (\url{https://github.com/libjpeg-turbo/libjpeg-turbo}), a C library providing high-performance JPEG image compression and decompression functionalities. Its oss-fuzz introspector profile is available at  
+\url{https://introspector.oss-fuzz.com/project-profile?project=libjpeg-turbo}.
+
+\section{Part 1 - Running Existing Fuzzing Harnesses}
+We conducted two 4-hours fuzzing experiments of a \texttt{libjpeg-turbo}'s existing harness, one using the default seed corpus and another with no seeds, and then compared their respective code coverage. Note that \texttt{libjpeg-turbo} project actually has several harnesses (e.g.\ \texttt{compress\_fuzzer}, \texttt{decompress\_fuzzer}, \texttt{transform\_fuzzer}, etc.), all driven by the same oss-fuzz logic. In this part of the report, we focus exclusively on the \texttt{libjpeg\_turbo\_fuzzer} harness. We wrote scripts that reproduce these experiments. Those scripts can be found in our \texttt{submission.zip} as expected but also in our \href{https://github.com/roxannecvl/oss-fuzz/tree/main/scripts}{fork of the oss-fuzz project}, inside the \texttt{scripts/} directory.  \\
+
+\noindent First, \href{https://github.com/roxannecvl/oss-fuzz/blob/main/scripts/run.w_corpus.sh}{\texttt{scripts/run.w\_corpus.sh}} clones our fork of the oss-fuzz project and \texttt{cd} in the \texttt{oss-fuzz} directory. Second, it builds the libjpeg-turbo image. Then it compiles the fuzzers, runs the \texttt{libjpeg\_turbo\_fuzzer} for four hours with the initial seeds and stores the results in \texttt{build/out/corpus\_seed}. Finally, it produces the html coverage report, that we manually stored in \texttt{coverage\_reports/w\_corpus} on our Github repository, in case you would like to go through it without necessarily running the 4-hours fuzzing experiment. Moreover, you can find that coverage report in the \texttt{submission.zip} at \texttt{part1/report/w\_corpus}. \\
+
+\begin{sloppypar}
+\noindent On the other hand,  \href{https://github.com/roxannecvl/oss-fuzz/blob/main/scripts/w_o_corpus.sh}{\texttt{scripts/w\_o\_corpus.sh}} \texttt{checkout} in the \texttt{no-seed} branch after cloning, but then does the exact same thing as above. The changes come from the fact that in that branch, we added a custom \texttt{build\_local.sh} in \texttt{oss-fuzz/projects/libjpeg-turbo} which omits all the seed-copying steps by commenting out those lines out. This custom script replaces the original \texttt{build.sh} via a final \texttt{COPY} line that has been added in the \texttt{Dockerfile}. The diff file that shows exactly the difference between the two branches is located at: \url{https://github.com/roxannecvl/oss-fuzz/blob/main/oss-fuzz.diff} or in our \texttt{submission.zip} at \texttt{part1/oss-fuzz.diff}. There is no \texttt{project.diff} as all our changes are directly in the \texttt{oss-fuzz.diff} file. \\
+\end{sloppypar}
+
+\noindent In case you just want to check that our scripts work, without having to fuzz for 4 hours, you can do the following which will change the fuzzing period to 10 seconds:
+
+\begin{lstlisting}[language=bash]
+#!/bin/bash
+git clone git@github.com:roxannecvl/oss-fuzz.git && cd oss-fuzz
+sudo nano infra/helper.py
+^/ # (Go to line)
+1446 + enter 
+# Finally change the "4h" to "10s"
+# Run our scripts with the first line commented out
+\end{lstlisting}
+
+\noindent \\Table~\ref{tab:coverage} below shows an overview of the coverage reports for each of the fuzzing experiments. Full html coverage reports can be found in the \texttt{coverage\_reports} folder of our fork and the paths to the html files are the followings: \url{https://roxannecvl.github.io/oss-fuzz/coverage_reports/w_corpus/linux/report.html} and \url{https://roxannecvl.github.io/oss-fuzz/coverage_reports/w_o_corpus/linux/report.html}.
+
+\begin{table}[ht]
+  \centering
+  \caption{Coverage results for both fuzzing experiments.}
+  \label{tab:coverage}
+  \begin{tabular}{|l l l l|}
+    \hline
+    Configuration  & Line Coverage           & Function Coverage        & Region Coverage         \\ \hline
+    With seeds     & 28.47\% (6488/22792)    & 32.87\% (234/712)        & 25.63\% (6041/23573)    \\
+    Without seeds  &  4.75\% (1082/22792)    &  8.29\% ( 59/712)        &  4.83\% (1138/23573)    \\ \hline
+  \end{tabular}
+\end{table}
+
+\noindent The use of initial seeds achieves a gain of \textbf{23.72\%} in terms of line coverage, corresponding to 5,406 additional lines covered. Function coverage experiences an increase of \textbf{24.58\%}, corresponding to 175 more functions covered. Finally, in terms of region coverage, a gain of \textbf{20.80\%} is achieved, corresponding to 4,903 more regions.\\
+
+\noindent A closer look at the \texttt{src/} directory reveals where most of this extra coverage comes from.  With seeds, the fuzzer quickly encounters valid JPEG markers, and overall covers far more core functions. Thus, the following files, some of which handle the main JPEG decoding phases, go from nearly untested when no seeds are used to almost fully covered for some of them. For the arithmetic‐coding logic in \texttt{jdarith.c}, the line coverage climbs from 0\% to around 99\%; for the coefficient‐decoding functions in \texttt{jdcoefct.c}, it jumps from 0\% to almost 95\%; for the color‐conversion code in \texttt{jdcolor.c}, it goes from 0\% to around 48\%; and finally the line coverage of JPEG marker parser in \texttt{jdmarker.c}, which handles header segment interpretation, increases by 15\%, from 76\% to 91\%. 
+
+\noindent Moreover, a concrete example of the fuzzing improvements achieved when using initial seeds is the \texttt{consume\_markers} function in \texttt{jdinput.c}, which uses a \texttt{switch} to handle two key JPEG markers, as we can see below:
+\begin{itemize}
+  \item \texttt{JPEG\_REACHED\_SOS} (start of scan)
+  \item \texttt{JPEG\_REACHED\_EOI} (end of image)
+\end{itemize}
+
+\begin{lstlisting}[language=C]
+   val = (*cinfo->marker->read_markers)(cinfo);
+   switch (val) {
+     case JPEG_REACHED_SOS:   
+       if (inputctl->inheaders) {
+          initial_setup(cinfo);
+          inputctl->inheaders = FALSE;
+       } else {
+          if (!inputctl->pub.has_multiple_scans)
+     	      ERREXIT(cinfo, JERR_EOI_EXPECTED); 
+          start_input_pass(cinfo);
+       }
+       break;
+     case JPEG_REACHED_EOI:  /* Found EOI */
+       inputctl->pub.eoi_reached = TRUE;
+       if (inputctl->inheaders) {  
+ 	      if (cinfo->marker->saw_SOF)
+    	      ERREXIT(cinfo, JERR_SOF_NO_SOS);
+       } else {
+  		  if (cinfo->output_scan_number > cinfo>input_scan_number)
+              cinfo->output_scan_number = cinfo->input_scan_number;
+       }
+       break;
+       // ...
+
+   }
+\end{lstlisting}
+
+\noindent When we fuzz with the provided seed corpus, valid SOS and EOI markers appear quickly, so both branches run and we cover 197 of the 202 lines in this function (97.52\%). Without any seeds, the fuzzer almost never produces those markers, so it never enters the SOS case and barely hits EOI—covering only 40 lines (19.80\%). In other words, missing the “magic” bytes means almost the entire marker‐handling code is skipped, explaining the 77.72\% drop in this function's coverage. 
+
+\section{Part 2 - Analyzing Existing Fuzzing Harnesses}
+After analyzing the oss-fuzz introspector coverage report for \href{https://storage.googleapis.com/oss-fuzz-introspector/libjpeg-turbo/inspector-report/20250428/fuzz_report.html}{\texttt{libjpeg-turbo}}, we identified two significant uncovered regions.
+
+\subsection*{3.1 Uncovered Region 1}
+Our first uncovered region is the \texttt{jtransform\_execute\_transform} function. 
+The following overview summarizes the coverage metrics, available on the oss-fuzz inspector, of this function:
+
+\medskip
+\begin{tabular}{@{}l l@{}}
+\textbf{Function name:}            & \texttt{jtransform\_execute\_transform} \\
+\textbf{Source file:}              & \texttt{src/libjpeg-turbo.main/transupp.c}                \\
+\textbf{Reached by fuzzers:}              & \texttt{['transform\_fuzzer', 'transform\_fuzzer\_3\_0\_x']}                \\
+\textbf{Function lines hit:}     & 21.95\,\%                              \\
+\textbf{Cyclomatic complexity:}    & 19                                     \\
+\textbf{Functions reached:}        & 18                                     \\
+\textbf{Reached by functions:}        & 2                                     \\
+\textbf{Accumulated cyclomatic complexity:}   & 210\\
+\textbf{Undiscovered complexity:}   & 0\\
+\end{tabular}
+\medskip\\
+
+\noindent By examining \texttt{libjpeg-turbo}'s \texttt{src/} directory, we figured out that \texttt{jtransform\_execute\_transform} is defined in \texttt{transupp.c}, but renamed as \texttt{jtransform\_execute\_transformation} in  \href{https://github.com/libjpeg-turbo/libjpeg-turbo/blob/main/src/transupp.h#L206}{\texttt{transupp.h}}. Moreover, this function is mainly called in \texttt{turbojpeg.c}, in particular directly by \texttt{tj3Transform} which is one the public function from \texttt{libjpeg-turbo}'s API. %and whose coverage metrics are the following: 
+
+%\medskip
+%\begin{tabular}{@{}l l@{}}
+%\textbf{Function name:}            & \texttt{tj3Transform} \\
+%\textbf{Source file:}              & \texttt{/src/libjpeg-turbo.main/turbojpeg.c}                \\
+%\textbf{Reached by fuzzers:}              & \texttt{['transform\_fuzzer', 'transform\_fuzzer\_3\_0\_x']}                \\
+%\textbf{Function lines hit:}     & 0.0\%                              \\
+%\textbf{Cyclomatic complexity:}    & 85                                     \\
+%\textbf{Functions reached:}        & 86                                     \\
+%\textbf{Reached by functions:}        & 1                                     \\
+%\textbf{Accumulated cyclomatic complexity:}   & 923\\
+%\textbf{Undiscovered complexity:}   & 0\\
+%\end{tabular}
+%\medskip\\
+
+
+\noindent \texttt{jtransform\_execute\_transform} is the main DCT-level transformation engine in libjpeg-turbo. It implements eight lossless operations (identity, horizontal/vertical flips, transpose, transverse, and 90°/180°/270° rotations), three crop modes (zero-pad, reflect, flat), and two wipe/drop variants, and carries a cyclomatic complexity of 19. It therefore exposes a very large attack surface. This wide set of features thus makes it a particularly significant uncovered region.  
+
+
+\noindent Another reason why we considered this uncovered region important is that \texttt{jtransform\_execute\_transform} calls a lot of helper functions internally (18). Since not all of the transformation are reached, not all of these internal function are fuzzed. One such example is the \texttt{do\_transverse} function in \texttt{/src/transupp.c} which is 0\% reached and which has a cyclomatic complexity of 21. You can find the source code of this function in the annex section of this report (\autoref{transverse}) or in the official github repository of \href{https://github.com/libjpeg-turbo/libjpeg-turbo/blob/main/src/transupp.c#L1246}{\texttt{libjpeg\_turbo}}. The implementation of \texttt{do\_transverse} involves significant memory access and manipulation. This includes block-level memory copying and mirroring, where memory is accessed using virtual arrays. Some parts of the code manipulate memory at the level of individual coeffictients with sign changes and transpositions like here : 
+\lstinputlisting[language=C]{short_transverse.c}
+
+\noindent \\This makes this helper function an interesting target as well, and our goal will be to reach it too through \texttt{jtransform\_execute\_transform}. Moreover this is only one example among the other helper functions that are not yet reached and seem interesting to us. 
+
+\noindent \texttt{Libjpeg\_turbo} has one unique harness that is supposed to reach \texttt{jtransform\_execute\_transformation} and it is the \texttt{transform\_fuzzer} (and its 3\_0\_x version: \texttt{transform\_fuzzer\_3\_0\_x}). The harness source code can be found in the \href{https://github.com/libjpeg-turbo/libjpeg-turbo/blob/main/fuzz/transform.cc}{\texttt{libjpeg\_turbo}} repository. By examining it, we can easily see why this harness doens't cover our function entirely. The overall structure of the file is quite repetitive as it performs a series of operations with slight variations in transformation flags (\texttt{transforms[0].op}) and options (\texttt{transforms[0].options}). The code initializes a \texttt{tjtransform} structure (\texttt{transforms[0]}), assigns a specific operation (op) like \texttt{TJXOP\_NONE}, \texttt{TJXOP\_TRANSPOSE}, or \texttt{TJXOP\_ROT90}, (which represent no operation, transposition and rotation of 90° respectively) and defines transformation options like \texttt{TJXOPT\_PROGRESSIVE}, \texttt{TJXOPT\_GRAY}, \texttt{TJXOPT\_CROP}, etc. Each transformation block follows a similar pattern:
+\begin{itemize}
+    \item Set the transformation operation and options.
+    \item  Allocate sufficient memory for the output buffer using \texttt{tj3TransformBufSize()} and \texttt{tj3Alloc()}.
+    \item Apply the transformation using \texttt{tj3Transform()}.
+    \item Free the allocated resources before moving to the next transformation.
+\end{itemize}
+
+\noindent The documentation for all possible \href{https://github.com/libjpeg-turbo/libjpeg-turbo/blob/main/src/turbojpeg.h#L982}{transformations} and transformation \href{https://github.com/libjpeg-turbo/libjpeg-turbo/blob/main/src/turbojpeg.h#L982}{options} can be found in the source code. 
+
+\noindent The shortcomings of the harness is that it doesn't test all combinations of operations and operation options, and it doesn't even test all operations. Indeed, the original harness tests only three out of the eight possible transformations. We will use the insights gained in this section to improve the coverage of \texttt{jtransform\_execute\_transform} in Part 3 of this report. 
+
+
+
+
+%\noindent We also noticed that actually almost all functions defined in \texttt{turbojpeg.c} are poorly covered. By analyzing \texttt{tj3Transform}'s implementation specifically, we found out that by focusing on its inputs \texttt{tjhandle handle} and \texttt{const tjtransform *t}, and by changing accordingly \texttt{transform.cc}, we could significantly improve the coverage of this region. In particular, the shortcomings of this existing harness are that the current \texttt{transform.cc} always sets \texttt{transforms[0].op} to the simplest values (typically \texttt{TJXOP\_NONE} or \texttt{TJXOP\_HFLIP}), and never assigns any of the other six operation codes or cropping flags (e.g.\ \texttt{JCROP\_REFLECT}, \texttt{JCROP\_FORCE}).  Furthermore, it seems like the seed corpus used consists solely of MCU-aligned, well-formed JPEGs, so branches requiring non-aligned offsets or wipe/drop logic are never executed.\\
+
+\subsection*{3.2 Uncovered Region 2}
+The second significant uncovered code region is the implementation of the following functions: \texttt{tj3SaveImage8}, \texttt{tj3SaveImage12} and \texttt{tj3SaveImage16} available in the API of libjpeg-turbo. \texttt{tj3SaveImage}, defined in \texttt{turbojpeg-mp.c}, saves an image from memory to disk. It takes as input a buffer containing the image, the image parameters and the filename to write to, and saves the image to the disk.
+
+\noindent Using Fuzz introspector we see that this region has the following coverage metrics:
+
+\medskip
+\tabcolsep=0.10cm
+\noindent\begin{tabular}{ |p{4.9cm}||p{3.2cm}|p{3.2cm}|p{3.2cm}|  }
+ \hline
+ \multicolumn{4}{|c|}{Function coverage} \\
+ \hline
+ \textbf{Function name} & \textbf{tj3SaveImage16} & \textbf{tj3SaveImage12} & \textbf{tj3SaveImage8} \\
+ \hline
+ Source file & turbojpeg-mp.c & turbojpeg-mp.c  & turbojpeg-mp.c \\
+ Reached by fuzzers &   0  & 0 & 0\\
+ Function lines hit \% & 0.0 & 0.0 & 0.0\\
+ Cyclomatic complexity & 21 & 21 & 21\\
+ Functions reached & 37 & 37 & 37\\
+ Reached by functions & 0 & 0 & 1 \\
+ Acc. cyclomatic complex.& 229 & 229 & 227\\
+ Undiscovered complexity & 60 & 60 & 58 \\
+ \hline
+\end{tabular}
+\medskip
+
+\noindent \\We see that these functions are not covered at all by the existing harnesses. They can reach a significant number of other functions and they have a non-negligible cyclomatic complexity. Since they are available in the API, it's essential to fuzz them. The impact of a potential attack is big because of the purpose of the functions. A bug in one of these functions could for example lead to arbitrary file write by the user running libjpeg-turbo. Also, for example if the library is used in the backend of a web application (for example an online image converter), the inputs like the file name, image width and height, etc. could be user controlled, further increases the necessity to test them consequently. \\
+
+The current harnesses don't cover these functions directly; they focus on the compression and decompression of images.
+
+Other functions (\texttt{tj3Set}, \texttt{tj3Get}, \texttt{tj3Alloc}, etc.) are covered but are not the primary targets.
+
+\begin{itemize}
+  \item \textbf{Compression harnesses}
+  \begin{itemize}
+    \item \texttt{compress.cc}: Fuzzes \texttt{tj3Compress8} with various pixel formats, quality settings, subsampling options, and non-default compression options.
+    \item \texttt{compress12.cc}: Similar to \texttt{compress.cc}, but fuzzes \texttt{tj3Compress12} for higher image data precision.
+    \item \texttt{compress\_yuv.cc}: Fuzzes \texttt{tj3CompressFromYUV8} and \texttt{tj3EncodeYUV8}; analogous to \texttt{compress.cc} but includes an additional step to encode RGB into YUV.
+    \item \texttt{compress\_lossless.cc}: Fuzzes \texttt{tj3Compress8} with different pixel formats, image data precisions, lossless-specific parameters, and non-default compression options.
+    \item \texttt{compress12\_lossless.cc} and \texttt{compress16\_lossless.cc}: Similar to \texttt{compress\_lossless.cc} but for \texttt{tj3Compress12} and \texttt{tj3Compress16} respectively, used for higher image data precision.
+  \end{itemize}
+
+  \item \textbf{Decompression harnesses}
+  \begin{itemize}
+    \item \texttt{decompress.cc}: Fuzzes \texttt{tj3Decompress8}, \texttt{tj3Decompress12}, and \texttt{tj3Decompress16} for partial and full image decompression with non-default decompression options and scaling factors.
+    \item \texttt{decompress\_yuv.cc}: Analogous to \texttt{decompress.cc}, but for \texttt{tj3DecompressToYUV8} and \texttt{tj3DecodeYUV8}, including an additional step to decode YUV into RGB.
+  \end{itemize}
+
+\item \textbf{Other harnesses}
+  \begin{itemize}
+    \item \texttt{cjpeg.cc}: Fuzzes the \texttt{main} function of \texttt{cjpeg.c} with some flags to test the \texttt{cjpeg} command line user interface.
+  \end{itemize}
+\end{itemize}
+
+
+As we see, none of those harnesses cover the saveImage utility functions, because the function is never called from one of those API endpoints. This can be verified by clicking of the function signatures on GitHub.
+
+\section{Part 3 - Improving Existing Harnesses}
+\subsection{Uncovered Region 1}
+
+To improve coverage of the \texttt{jtranform\_execute\_transform} we are going to rely on modifying the existing transform harness solely. For this we created a new branch in our fork of oss-fuzz called \texttt{transform\_improvement}. In that branch you'll find a harness in \href{https://github.com/roxannecvl/oss-fuzz/blob/transform_improvement/projects/libjpeg-turbo/fuzz/transform.cc}{\texttt{projects/libjpeg-turbo/fuzz/transform.cc}} and we modified the \href{https://github.com/roxannecvl/oss-fuzz/blob/transform_improvement/projects/libjpeg-turbo/Dockerfile}{\texttt{Dockerfile}} such that it copies this harness in the directory of harnesses and thus overwrites the original transform harness (\texttt{COPY /fuzz /src/libjpeg\-turbo.main/fuzz/}). \\
+
+\noindent This new harness keeps the same structure as the old one, basically it is a copy of the original harness, to whom we add 7 more repetitions of the "calling a transformation" pattern which we mentioned in Part 2.1. The additions go from line \href{https://github.com/roxannecvl/oss-fuzz/blob/transform_improvement/projects/libjpeg-turbo/fuzz/transform.cc#L157}{\texttt{157}} to line \texttt{332} and can be found in the annex (\autoref{transFuzzer}). As you can notice, there is at least one "calling a transformation pattern" for each of the untested transformations (namely \texttt{TJXOP\_HFLIP}, \texttt{TJXOP\_VFLIP}, \texttt{TJXOP\_TRANSVERSE}, \texttt{TJXOP\_ROT180}, \texttt{TJXOP\_ROT270}). Moreover, we added sections that test already covered transformations but with different sets of transformation options. \\
+
+\noindent To run our modified fuzzer (1 x 4 hours) you can simply run \href{https://github.com/roxannecvl/oss-fuzz/blob/main/scripts/run.improve1.sh}{\texttt{run.improve1.sh}}, which you will find on our Github repository and in our \texttt{submission.zip} under \texttt{part3/improve1/run.improve1.sh}. It is the same script as \texttt{run.w\_corpus} apart from the fact that it \texttt{cd} in the \texttt{tranform\_improvement} branch first and runs the \texttt{transform\_fuzzer} instead of the \texttt{libjpeg\_turbo\_fuzzer}. 
+
+To run our fuzzer 3 times 4 hours and generate a report that takes into account these 3 rounds we created and run a script which you can find on our Github repository at \href{https://github.com/roxannecvl/oss-fuzz/blob/main/scripts/full_script_transform_improvement_3_fuzz.sh}{\texttt{full\_script\_transform\_improvement\_3\_fuzz.sh}}. As we only used it internally, this one doesn't re-clone our repository. It runs the fuzzer 3 times, save the output in three different corpus directories, merges the three corpus directories and finally generates the coverage with that merged corpus directory. 
+
+We compare our new coverage against the coverage that we got with the original transform harness (for which we used \href{https://github.com/roxannecvl/oss-fuzz/blob/main/scripts/full_script_transform_comparison_3_fuzz.sh}{\texttt{full\_script\_transform\_comparison\_3\_fuzz.sh}}). 
+
+You can find the two coverage reports generated from the 2 x 3 4-hours fuzzing at \texttt{part3/improve1/coverage\_noimprove1} and \texttt{part3/improve1/coverage\_improve1}. You can also see them directly rendered at the following links: 
+\begin{itemize}
+    \item \href{https://roxannecvl.github.io/oss-fuzz/coverage_reports/coverage_noimprove1/linux/report.html}{Coverage with old transform fuzzer}
+
+    \item \href{https://roxannecvl.github.io/oss-fuzz/coverage_reports/coverage_improve1/linux/report.html}{Coverage with new transform fuzzer}
+\end{itemize}
+
+
+\badgecolorbox{red}{IMPORTANT}
+\, The reason why we don't have one single \texttt{part3/coverage\_noimprove} but one \texttt{part3/improve1/coverage\_noimprove1} and one \texttt{part3/improve2/coverage\_noimprove2} is because we once compare against the transform fuzzer and one against libjpeg-turbo fuzzer. \\
+
+
+
+\noindent Let's now look at the improvement we got, our main target was \texttt{jtranform\_execute\_transform} and indirectly the whole \texttt{transupp.c} file. For the comparison above we use the 1st version of our runs (but coverage doesn't really change between versions). We can see that the \texttt{transupp.c} file went from \texttt{28.10\% (473/1683)} coverage to \texttt{ 51.16\% (861/1683)} with our new harness. So a total of \texttt{388} new lines. Now if we look at the number of new lines covered in the whole source directory we get \texttt{401} new lines, showing that our improvement even (modestly) impacted other files. The other files that got new discovered lines are \texttt{jcarith.c} (+ 1), \texttt{jchuff.c} (+ 7), \texttt{turbojpeg.c} (+ 5) and \texttt{jutils.c} (+ 3). You may notice that $388 + 1 + 7 + 5 + 3 = 404 \neq 401$ this is because there are three files that lose one line of coverage, namely : \texttt{jctrans.c} line 108, which is a call to a function that is fuzzed through another call, \texttt{jdapimin.c} line 170 which does an assignment, and \texttt{jdarith.c} line 654 "goto bad", which is called only 4 times with the original fuzzer. This doesn't impact our coverage too much and is likely due to some part of randomness. When fuzzing for only four hours it is likely that even the exact same harness doesn't get the exact same coverage. \\
+
+\noindent Another concrete improvement of our harness is that it now fully covers complex function such as the \texttt{do\_transverse} function mentioned in part 2.1.
+
+\noindent However, you might notice that even our new fuzzer doesn't reach the whole \texttt{jtranform\_execute\_transform}. First, it doesn't access the \texttt{case JXFORM\_WIPE:} and \texttt{case JXFORM\_DROP:} this is because these two "transformation" are not directly callable through the tranformation operation enum mentioned in part 2.1. Second, the cropping operations are not performed even though the cropping transformation option was set from time to time. This is because to enter cropping operations a lot of if conditions which do not directly depend on hard coded values have to pass. If someone wanted to further improve the coverage of this section, we believe that a great idea would be to use the first few bits of the seed to do the assignments of the \texttt{tjtransform} structure instead of having these repeated-patterns hard-coded version. 
+
+\subsection{Uncovered Region 2}
+To add coverage for \texttt{tj3SaveImage8}, \texttt{tj3SaveImage12} and \texttt{tj3SaveImage16} we decided to create a new harness as well as new seeds. We added a branch called \texttt{tj3SaveImage} with the new harness at the path \texttt{projects/libjpeg-turbo/save\_image.cc} and the scripts we used to generate the new seeds in the folder \texttt{projects/libjpeg-turbo/seed\_generation}. We could not add the zip archive with the new seeds to our repository because of its size, so we uploaded it to \href{https://paultissot.ch/save_image_corpus.zip}{https://paultissot.ch/save\_image\_corpus.zip} and modified our script to download it to \texttt{projects/libjpeg-turbo/seed\_generation/save\_image\_corpus.zip}. We also modified \texttt{CMakeLists.txt} and the \texttt{Dockerfile}, both in the folder \texttt{projects/libjpeg-turbo}, to include the new harness as well as the new seeds to the build. \\
+
+
+The new seeds are quite simple in essence. We started from a set of JPEG seeds referenced at the end the paper \textit{Seed Selection for Successful Fuzzing}, used \textit{libjpeg-turbo} to extract the buffer of pixels, the width and the height, and concatenated the bytes corresponding to those information in binary files, which became our seeds. Then the harness reads those file, assigning their value to the function parameters.
+
+\noindent The new harness tests the three functions on each run. First, it initializes the image width, height and pixel format with values from the fuzzer's input. From these variable it computes some image parameters. Then, it uses the remaining data from the fuzzer's input to fill the 8-bit image buffer. The 12-bit and 16-bit image buffers are copies of the 8-bit image buffer with each value scaled up to fill 12 bits and 16 bits respectively. Finally, a loop executes in turn the three functions \texttt{tj3SaveImage8}, \texttt{tj3SaveImage12} and \texttt{tj3SaveImage16} with their respective image buffer and parameters computed before. As a last step, the buffers are freed and the output files deleted for the next run.\\
+
+
+\noindent To run our new fuzzer (1 x 4 hours) you can simply run \href{https://github.com/roxannecvl/oss-fuzz/blob/main/scripts/run.improve2.sh}{\texttt{run.improve2.sh}}, which you will find on our Github repository and in our \texttt{submission.zip} under \texttt{part3/improve2/run.improve2.sh}.  This script is similar to \texttt{run.w\_corpus.sh}, the main
+differences are: it uses the branch \texttt{tj3SaveImage}, download the new seeds and run the newly created
+\texttt{save\_image\_fuzzer}.
+
+To run our new fuzzer 3 times 4 hours and generate a report that takes into account these 3 rounds we created and run a script which you can find on our Github repository at \href{https://github.com/roxannecvl/oss-fuzz/blob/main/scripts/full_script_save_image_improvement_3_fuzz.sh}{\texttt{full\_script\_save\_image\_improvement\_3\_fuzz.sh}}. It is similar to {\texttt{full\_script\_transform\_improvement\_3\_fuzz.sh}} but for this new improvement. 
+
+We compare our new coverage against the coverage that we got with the original \texttt{libjpeg\_turbo} fuzzer (for which we used \href{https://github.com/roxannecvl/oss-fuzz/blob/main/scripts/full_script_save_image_comparison_3_fuzz.sh}{\texttt{full\_script\_save\_image\_comparison\_3\_fuzz.sh}}). 
+
+You can find the two coverage reports generated from the 2 x 3 4-hours fuzzing at \texttt{part3/improve2/coverage\_noimprove2} and \texttt{part3/improve2/coverage\_improve2}. You can also see them directly rendered at the following links: 
+\begin{itemize}
+    \item \href{https://roxannecvl.github.io/oss-fuzz/coverage_reports/coverage_noimprove2/linux/report.html}{Coverage with original \texttt{libjpeg\_turbo\_fuzzer}}
+
+    \item \href{https://roxannecvl.github.io/oss-fuzz/coverage_reports/coverage_improve2/linux/report.html}{Coverage with new \texttt{save\_image\_fuzzer}}
+\end{itemize}
+
+
+\badgecolorbox{red}{IMPORTANT} (repeated)
+The reason why we don't have one single \texttt{part3/coverage\_noimprove} but one \texttt{part3/improve1/coverage\_noimprove1} and one \texttt{part3/improve2/coverage\_noimprove2} is because we once compare against the transform fuzzer and one against libjpeg-turbo fuzzer. \\
+
+
+
+
+
+\noindent We improved the coverage of \texttt{turbojpeg-mp.c}. Our new harness covers 17.31\% (58/335) of lines, 25\% (1/4) of functions and 10.17\% (55/541) of regions of the file. These number don't look so impressive, but in fact this is a significative improvement. First, our new harness targets specific uncovered functions from the API, so there is not a lot of code executed before the actual function is called. Second, the functions \texttt{tj3SaveImage8}, \texttt{tj3SaveImage12} and \texttt{tj3SaveImage16} share a lot of code, so they are defined in one function in the source code and then the \texttt{DLLEXPORT} macro is used to create the three functions, each one a little bit different from the others. Finally these numbers are new code coverage, the baseline for this file is (TODO: add numbers of baseline) and combined with the coverage of our new harness the code coverage increases to (TODO: add numbers combined).\\
+
+\noindent The code we targeted is in the annex \ref{saveImage}, the line numbers in this section refer to it. The function consisting in 109 lines of code with the comments is in its most part covered. Thanks to the fact that we fuzzed the three API functions executing this code, we were able to get only 14 lines of uncovered or partially covered code.
+
+\noindent We did our best to cover the function but some small parts are still uncovered. The lines 28 was not covered since \texttt{tj3Init(TJINIT\_DECOMPRESS)} never failed non-surprisingly. The line 37 was not covered because we have always given a valid \texttt{filename}. The line 41 was not covered since, according to the comment, the JPEG code has never signaled an error. The lines 52-57 were not covered since the \texttt{filename} given didn't have file extension at the end. The lines 63 and 65 were not covered because we didn't set the \texttt{precision} parameter ourself. The line 77 was not completely covered because we defined the \texttt{pitch} exactly as in this line of code but in our harness. The lines 83-84 were not covered because \texttt{invert} is set in line 54 which is not covered. Overall, one could further improve our harness by fuzzing the \texttt{filename} parameter and use \texttt{tj3Set} to fuzz \texttt{TJPARAM\_PRECISION}.\\
+
+\section{Part 4: Crash Analysis}
+\noindent As our improved fuzzers did not uncover any new bugs, we chose to reproduce a known memory corruption crash. \texttt{CVE-2020-13790} is a heap buffer over-read bug in the \texttt{libjpeg-turbo} project (version 2.0.4), specifically located in the function \texttt{get\_rgb\_row()} defined in \texttt{rdppm.c}, which reads pixel data from PPM image files. A malformed input file that declares a width larger than the actual number of pixel values causes the function to read beyond the allocated buffer, triggering a \texttt{heap-buffer-overflow}. To reproduce the issue, we forked the \texttt{libjpeg-turbo} repository and created a branch based on the vulnerable version 2.0.4 (\url{https://github.com/ayahamane/libjpeg-turbo/tree/CVE-2020-13790-poc}). We used the known PoC input file available in the oss-fuzz seed corpus (\url{https://github.com/libjpeg-turbo/seed-corpora/tree/main/bugs/compress/github_433_CVE-2020-13790}), renamed it \texttt{crash\_input.ppm} and placed it in a dedicated directory named \texttt{crash-poc}. We then implemented a standalone script named \texttt{run\_crash.sh} that clones our fork, builds the library's vulnerable version with AddressSanitizer (ASan) enabled and runs the PoC using the \texttt{cjpeg} binary, which internally processes PPM files and calls the vulnerable function. The crash was successfully reproduced, with ASan immediately detecting and reporting the out-of-bounds memory read. Both the script and the renamed PoC input file are included in our forked repository branch for reproducibility.\\
+
+\noindent The root cause of this vulnerability lies in insufficient input validation within \texttt{get\_rgb\_row()}. The function assumes that the declared width of the image matches the actual number of pixel bytes, leading it to read beyond the memory buffer when this assumption is violated. According to the National Vulnerability Database (\url{https://nvd.nist.gov/vuln/detail/CVE-2020-13790}), the issue was addressed in version 2.0.5 of the \texttt{libjpeg-turbo} library. The corresponding patch was introduced in the commit \texttt{3de15e0} (\url{https://github.com/libjpeg-turbo/libjpeg-turbo/commit/3de15e0c344d11d4b90f4a47136467053eb2d09a}), which modifies the rescaling array allocation logic in \texttt{start\_input\_ppm()}. Specifically, it ensures that the size of the rescale buffer is always computed using \texttt{MAX(maxval, 255)} rather than just \texttt{maxval}. This change prevents unsafe access in subsequent image processing steps, even when the actual pixel data is incomplete or malformed, by ensuring that the buffer is always large enough. Although the vulnerable function \texttt{get\_rgb\_row()} itself was not changed and does not enforce a direct comparison between the declared image width and the input length, malformed files are now safely handled due to the strengthened input preparation logic.\\
+
+\noindent To verify whether the issue was effectively patched, we created a separate branch \texttt{CVE-2020-13790-postpatch} in our fork of the \texttt{libjpeg-turbo} repository, based on the official release \texttt{2.0.5}. We reused the same input file from our pre-patch setup and provided a slightly modified standalone script, also named \texttt{run\_crash.sh}, which automatically clones the post-patch branch and performs the same build and execution steps. Upon running this script, we observed that the heap-buffer-overflow is no longer triggered; instead, it exits cleanly with the error message \texttt{Premature end of input file}. This empirical result confirms that the vulnerability is no longer exploitable in this version.\\
+
+\noindent \texttt{CVE-2020-13790} is rated with a CVSS v3.1 base score of \textbf{8.1 (High severity)}. Although it does not result in remote code execution on its own, the bug is highly relevant in production environments that accept untrusted image input, such as web services or automated image processing pipelines. The crash is reliably triggerable using a single malformed image, making it a strong vector for denial of service. Additionally, since heap over-reads may expose adjacent memory data, there is a risk of information disclosure, especially if the application outputs or logs the resulting memory state. In advanced scenarios, such memory disclosure could aid in bypassing memory protection mechanisms like ASLR or be chained with other vulnerabilities to achieve more serious exploits. While the exploitability is limited in isolation, the potential impact justifies the high severity rating and the importance of robust input validation in image-handling libraries.
+
+\section{Annex}
+\subsection{Code for \texttt{do\_transverse}}
+\label{transverse}
+\lstinputlisting[language=C]{transverse.c}
+
+\subsection{Changes for the  \texttt{transform\_fuzzer} harness}
+\label{transFuzzer}
+\lstinputlisting[language=C]{transharness.c}
+
+\subsection{Code for the \texttt{save\_image} harness}
+\label{saveImageFuzzer}
+\lstinputlisting[language=C]{save_image.cc}
+
+\subsection{Code for the \texttt{tj3SaveImage} function}
+\label{saveImage}
+\lstinputlisting[language=C]{tj3SaveImage.c}
+
+\end{document}
+ 
